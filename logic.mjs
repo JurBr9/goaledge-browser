@@ -28,3 +28,38 @@ export function toCsv(rows){
   const escape=v=>'"'+String(v??'').replaceAll('"','""')+'"';
   return [cols.join(','),...rows.map(r=>cols.map(c=>escape(r[c])).join(','))].join('\r\n');
 }
+
+// Foundation 0.4: a registry of user-entered fixtures. Registry status is NOT provider verification.
+export const CUP_COUNTRIES = ['Engeland','Spanje','Duitsland','Italië','Frankrijk','Nederland'];
+export const INTERNATIONAL = 'Internationaal';
+export const MAIN_TOURNAMENTS = leagues.Internationaal;
+export function competitionAllowed(country, competition, type) {
+  if(type==='league') return (leagues[country]||[]).includes(competition) && country!==INTERNATIONAL;
+  if(type==='international') return country===INTERNATIONAL && MAIN_TOURNAMENTS.includes(competition);
+  if(type==='cup') return CUP_COUNTRIES.includes(country) && typeof competition==='string' && competition.trim().length>=3 && competition.trim().length<=100;
+  return false;
+}
+export function validateFixture(fixture) {
+  const errors=[];
+  if(!competitionAllowed(fixture.country,fixture.competition,fixture.type)) errors.push('Land, toernooitype of competitienaam ongeldig.');
+  const home=String(fixture.home||'').trim(),away=String(fixture.away||'').trim();
+  if(!home || !away || home.length>100 || away.length>100) errors.push('Voer twee teamnamen in (maximaal 100 tekens).');
+  if(home && away && home.toLocaleLowerCase('nl')===away.toLocaleLowerCase('nl')) errors.push('Teams moeten verschillen.');
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(fixture.date||'') || !Number.isFinite(Date.parse(`${fixture.date}T12:00:00Z`)) || new Date(`${fixture.date}T12:00:00Z`).toISOString().slice(0,10)!==fixture.date) errors.push('Ongeldige wedstrijddatum.');
+  if(fixture.type==='international' && fixture.mainStageConfirmed!==true) errors.push('Bevestig dat het een hoofdtoernooiwedstrijd is.');
+  if(!String(fixture.source||'').trim()) errors.push('Vermeld een bronnotitie voor de wedstrijd.');
+  if(String(fixture.source||'').length>300) errors.push('Bronnotitie is te lang.');
+  return errors;
+}
+export function fixtureKey(f){return [f.country,f.type,f.competition.trim().toLocaleLowerCase('nl'),f.date,f.home.trim().toLocaleLowerCase('nl'),f.away.trim().toLocaleLowerCase('nl')].join('|')}
+export function validateLinkedOdds(record, fixtures) {
+  const fixture=fixtures.find(f=>f.id===record.fixtureId);
+  if(!fixture) return ['Kies een geregistreerde wedstrijd.'];
+  const errors=validate({...record,country:fixture.country,competition:fixture.type==='cup'?'':fixture.competition,home:fixture.home,away:fixture.away,date:fixture.date});
+  return errors.filter(e=>!e.startsWith('Competitie valt buiten'));
+}
+export function exportFixtureCsv(rows){
+  const cols=['id','country','type','competition','home','away','date','source','mainStageConfirmed','status','createdAt'];
+  const esc=v=>'"'+String(v??'').replaceAll('"','""')+'"';
+  return [cols.join(','),...rows.map(r=>cols.map(k=>esc(r[k])).join(','))].join('\r\n');
+}
